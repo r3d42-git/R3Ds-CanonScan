@@ -39,6 +39,10 @@ the same verifier. Signing/notarization and the local/public Gatekeeper checks
 must run in a permitted macOS execution context; a restricted sandbox may hide
 the existing keychain identities and can make `iconutil` report Invalid Iconset.
 No security setting or keychain change is required to use that context.
+The scripts use explicit failure branches for `[[ … ]]` assertions because the
+system Bash 3.2 can continue after a false compound assertion despite `set -e`.
+`script/test_release_guards.sh` checks the real invalid-version and wrong-hash
+paths without accessing Apple or GitHub; it also runs before every release.
 
 Stop on a failed check. Preserve its logs, submission ID and bytes. If Apple
 submission times out, query that ID instead of submitting again. An existing

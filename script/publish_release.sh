@@ -8,15 +8,15 @@ if [[ "${1:-}" == --dry-run ]]; then DRY_RUN=true; shift; fi
 [[ $# -eq 1 && "$1" == "$CANONSCAN_VERSION" ]] || { echo 'Usage: publish_release.sh [--dry-run] VERSION' >&2; exit 2; }
 VERSION="$1"
 TAG="v$VERSION"
-[[ "$(git branch --show-current)" == main && -z "$(git status --porcelain)" ]]
-[[ "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" == "$CANONSCAN_REPOSITORY" ]]
+[[ "$(git branch --show-current)" == main && -z "$(git status --porcelain)" ]] || { echo 'Release assertion failed (publish_release.sh:11)' >&2; exit 1; }
+[[ "$(gh repo view --json nameWithOwner --jq .nameWithOwner)" == "$CANONSCAN_REPOSITORY" ]] || { echo 'Release assertion failed (publish_release.sh:12)' >&2; exit 1; }
 OUT="$ROOT/dist/release/$VERSION"
-[[ "$(cat "$OUT/source-commit.txt")" == "$(git rev-parse HEAD)" ]]
+[[ "$(cat "$OUT/source-commit.txt")" == "$(git rev-parse HEAD)" ]] || { echo 'Release assertion failed (publish_release.sh:14)' >&2; exit 1; }
 ZIP="$OUT/R3Ds-CanonScan-$VERSION-macOS-arm64.zip"
 SOURCE="$OUT/R3Ds-CanonScan-$VERSION-backend-sources.tar.gz"
 ./script/verify_release.sh "$VERSION" "$ZIP"
 if git rev-parse --verify "$TAG" >/dev/null 2>&1; then
-  [[ "$(git rev-parse "$TAG^{commit}")" == "$(git rev-parse HEAD)" ]]
+  [[ "$(git rev-parse "$TAG^{commit}")" == "$(git rev-parse HEAD)" ]] || { echo 'Release assertion failed (publish_release.sh:19)' >&2; exit 1; }
 fi
 if gh release view "$TAG" --repo "$CANONSCAN_REPOSITORY" >/dev/null 2>&1; then
   echo 'Release already exists; refusing to replace published assets.' >&2; exit 1

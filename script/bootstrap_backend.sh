@@ -108,7 +108,7 @@ otool -L "$TASK_BUILD/runtime/bin/scanimage" > "$TASK_BUILD/runtime/linkage.txt"
 if ! awk 'NR > 1 { if ($1 !~ /^\/usr\/lib\// && $1 !~ /^\/System\/Library\//) exit 1 }' "$TASK_BUILD/runtime/linkage.txt"; then
   echo 'Scanner binary has a non-system runtime dependency.' >&2; exit 1
 fi
-[[ "$(lipo -archs "$TASK_BUILD/runtime/bin/scanimage")" == arm64 ]]
+[[ "$(lipo -archs "$TASK_BUILD/runtime/bin/scanimage")" == arm64 ]] || { echo 'Release assertion failed (bootstrap_backend.sh:111)' >&2; exit 1; }
 otool -l "$TASK_BUILD/runtime/bin/scanimage" | awk '/LC_BUILD_VERSION/{seen=1} seen && /minos/{if ($2 != "27.0") exit 1; found=1; exit} END{if (!found) exit 1}'
 "$TASK_BUILD/runtime/bin/scanimage" --version
 printf '%s\n' "$TASK_FINGERPRINT" > "$TASK_BUILD/runtime/build-fingerprint"
