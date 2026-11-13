@@ -36,7 +36,7 @@ Homebrew build or changed recipe cannot silently reuse an existing helper.
 This is a reproducible source/build-input recipe, not a promise of bit-identical
 binaries across Xcode or SDK releases. Record `xcodebuild -version`,
 `xcrun clang --version` and `xcrun --sdk macosx --show-sdk-version` when comparing
-builds. Release evidence records the actual toolchain used.
+builds.
 
 ## Release source asset
 
