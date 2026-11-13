@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.cache/
+.dependencies/
+dist/
+tmp/
+output/
+.codex/
+.agents/
+*.xcuserstate
+*.p12
+*.p8
+*.mobileprovision

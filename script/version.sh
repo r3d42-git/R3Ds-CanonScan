@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# One version source for development bundles and public releases.
+CANONSCAN_VERSION=0.4.0
+CANONSCAN_BUILD=5
+CANONSCAN_APP_NAME='R3Ds CanonScan'
+CANONSCAN_EXECUTABLE=CanonScan
+CANONSCAN_BUNDLE_ID=de.r3d.CanonScan
+CANONSCAN_MIN_MACOS=27.0
+CANONSCAN_TEAM_ID=G6JH37W285
+CANONSCAN_REPOSITORY=r3d42-git/R3Ds-CanonScan

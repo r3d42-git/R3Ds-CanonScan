@@ -1,0 +1,67 @@
+# Scanner backend build and corresponding source
+
+The supported scanner is Canon imageFORMULA P-208II, USB `1083:165f`.
+The statically linked SANE 1.4.0 helper includes only `canon_dr`. Its configuration
+must retain `option duplex-offset 260` and `usb 0x1083 0x165f`; the offset was
+validated for this scanner's approximately 5.5 mm sensor displacement. This
+release targets Apple Silicon and macOS 27.0 or later.
+
+## Rebuild
+
+On an Apple Silicon Mac with macOS 27 and Xcode command line tools installed:
+
+```sh
+./script/bootstrap_backend.sh --rebuild
+.dependencies/scanner-runtime/bin/scanimage --version
+otool -L .dependencies/scanner-runtime/bin/scanimage
+```
+
+The script downloads the unmodified release archives pinned in
+`script/backend-versions.sh`, checks SHA-256 before extracting, and builds
+libusb 1.0.30, libpng 1.6.59, libjpeg-turbo 3.2.1 and SANE 1.4.0 from source.
+Kitware CMake 4.1.3 is fetched and hash-verified as a local build tool. No global
+package installation is performed. Initial downloads require internet access;
+with all five archives in `.dependencies/downloads`, the build is offline.
+`BACKEND_BUILD_JOBS=4` can limit parallelism.
+
+`MACOSX_DEPLOYMENT_TARGET=27.0`, arm64 architecture, Apple clang and the current
+macOS SDK are explicit. Homebrew paths are excluded from the build environment;
+pkg-config discovery is disabled. libpng uses Apple's system zlib. Only Apple
+system dylibs/frameworks may remain in `otool -L`. The script verifies arm64 and
+Mach-O minimum macOS 27.0 before promoting the helper. Build logs, sources and
+static libraries are retained under `.dependencies/backend-build-FINGERPRINT`.
+The manifest and complete build recipe determine the fingerprint, so an older
+Homebrew build or changed recipe cannot silently reuse an existing helper.
+
+This is a reproducible source/build-input recipe, not a promise of bit-identical
+binaries across Xcode or SDK releases. Record `xcodebuild -version`,
+`xcrun clang --version` and `xcrun --sdk macosx --show-sdk-version` when comparing
+builds. Release evidence records the actual toolchain used.
+
+## Release source asset
+
+```sh
+./script/package_backend_sources.sh 0.4.0
+```
+
+This verifies and packages all four upstream archives, a checksum list,
+version/URL manifest, notices, extracted license texts and the build script into
+`dist/release/R3Ds-CanonScan-0.4.0-backend-sources.tar.gz`. It does not package
+Homebrew binaries or the CMake binary. To rebuild from that asset:
+
+```sh
+tar -xzf R3Ds-CanonScan-0.4.0-backend-sources.tar.gz
+cd R3Ds-CanonScan-0.4.0-backend-sources
+./script/bootstrap_backend.sh --rebuild
+```
+
+The included upstream archives already occupy the expected download cache.
+Only the hash-pinned build tool is downloaded on the first build. Full sources
+allow changing/rebuilding/relinking SANE and libusb, including static-library
+modifications; no object-only relinking kit is needed. App Swift sources and
+installation/package recipes are separately available in the release Git tag.
+The app licenses directory and source bundle retain third-party notices.
+
+The configuration intentionally does not enable network scanners or other
+SANE backends. Build verification and device discovery do not perform a scan;
+physical simplex/duplex tests remain separate user checks.
