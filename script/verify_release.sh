@@ -46,7 +46,7 @@ spctl --assess --type execute --verbose=4 "$APP"
 [[ "$(cat "$APP/Contents/Resources/sane.d/dll.conf")" == canon_dr ]] || { echo 'Release assertion failed (verify_release.sh:46)' >&2; exit 1; }
 [[ -s "$APP/Contents/Resources/AppIcon.icns" ]] || { echo 'Release assertion failed (verify_release.sh:47)' >&2; exit 1; }
 [[ -s "$APP/Contents/Resources/Licenses/CanonScan-GPL-3.0.txt" ]] || { echo 'Release assertion failed (verify_release.sh:48)' >&2; exit 1; }
-"$APP/Contents/Resources/scanimage" --version
+"$APP/Contents/Resources/scanimage" --format=png --version
 tar -xzf "$SOURCE" -C "$VERIFY"
 SOURCES="$VERIFY/R3Ds-CanonScan-$VERSION-backend-sources"
 (cd "$SOURCES" && shasum -a 256 -c SHA256SUMS)

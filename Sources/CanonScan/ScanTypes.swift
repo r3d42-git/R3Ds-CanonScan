@@ -114,7 +114,14 @@ struct ScannerFailure: LocalizedError, Sendable {
     static func status(_ code: Int32, details: String) -> Self {
         let message: String
         switch code {
-        case 1: message = "Diese Scanfunktion wird vom Gerät nicht unterstützt."
+        case 1:
+            // scanimage also uses exit 1 for argument and device-open failures;
+            // it does not necessarily mean SANE_STATUS_UNSUPPORTED.
+            if details.contains("PNG support not compiled in") {
+                message = "Die Scannerkomponente dieser App unterstützt das benötigte PNG-Format nicht. Bitte installiere eine korrigierte Version von R3Ds CanonScan."
+            } else {
+                message = "Die Scannerkomponente konnte den Vorgang nicht starten. Öffne die Diagnose in den Scanoptionen, um die Ursache zu prüfen."
+            }
         case 2: message = "Der Scan wurde abgebrochen."
         case 3: message = "Der Scanner ist belegt. Beende andere Scanprogramme und versuche es erneut."
         case 4: message = "Der Scanner hat eine Einstellung abgelehnt. Prüfe Auflösung und Farbmodus."

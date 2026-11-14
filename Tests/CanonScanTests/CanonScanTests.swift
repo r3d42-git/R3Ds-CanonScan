@@ -56,6 +56,30 @@ final class CanonScanTests: XCTestCase {
         }
     }
 
+    func testMissingPNGSupportIsReportedAsAppComponentFailure() async throws {
+        let executable = directory.appendingPathComponent("scanner-without-png")
+        try Data("#!/bin/sh\necho 'PNG support not compiled in' >&2\nexit 1\n".utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        let service = ScannerService(executable: executable, configuration: directory)
+        do {
+            _ = try await service.scan(device: ScannerDevice(id: "mock", name: "Mock"), settings: ScanSettings(), directory: directory.appendingPathComponent("batch")) { _ in XCTFail("No image should be delivered") }
+            XCTFail("Missing PNG support must fail")
+        } catch let error as ScannerFailure {
+            XCTAssertTrue(error.message.contains("Scannerkomponente"))
+            XCTAssertTrue(error.message.contains("PNG-Format"))
+            XCTAssertEqual(error.details, "PNG support not compiled in\n")
+        }
+    }
+
+    func testGenericExitOneDoesNotClaimUnsupportedScannerFunction() {
+        for details in ["", "scanimage: open of device canon_dr:libusb:000:006 failed: Invalid argument", "scanimage: setting of option --source failed (Invalid argument)"] {
+            let failure = ScannerFailure.status(1, details: details)
+            XCTAssertTrue(failure.message.contains("Diagnose"))
+            XCTAssertFalse(failure.message.contains("vom Gerät nicht unterstützt"))
+            XCTAssertEqual(failure.details, details)
+        }
+    }
+
     func testMockProcessOnlyDeliversFinalPNGAndAcceptsEndOfFeeder() async throws {
         let source = try image()
         let output = directory.appendingPathComponent("batch")

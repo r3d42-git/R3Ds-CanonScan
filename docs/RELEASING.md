@@ -7,9 +7,9 @@ a valid local `notarytool` credential profile. Keep credentials outside Git.
 From a clean, committed `main` branch:
 
 ```sh
-MACOS_NOTARY_PROFILE=ToolBoxS ./script/release.sh 0.4.0
-./script/publish_release.sh --dry-run 0.4.0
-./script/publish_release.sh 0.4.0
+MACOS_NOTARY_PROFILE=ToolBoxS ./script/release.sh 0.4.1
+./script/publish_release.sh --dry-run 0.4.1
+./script/publish_release.sh 0.4.1
 ```
 
 Set `CODE_SIGN_IDENTITY` to select another Developer ID certificate.
@@ -23,7 +23,7 @@ has a SHA-256 sidecar.
 To verify an existing ZIP and its accompanying source archive:
 
 ```sh
-./script/verify_release.sh 0.4.0 path/to/R3Ds-CanonScan-0.4.0-macOS-arm64.zip
+./script/verify_release.sh 0.4.1 path/to/R3Ds-CanonScan-0.4.1-macOS-arm64.zip
 ```
 
 The publish script pushes the source and an annotated version tag, uploads the

@@ -16,4 +16,27 @@ if "$ROOT/script/verify_release.sh" "$CANONSCAN_VERSION" "$ZIP" > "$TEMP/checksu
   echo 'Invalid checksum was accepted.' >&2; exit 1
 fi
 if ! grep -q 'SHA-256 mismatch:' "$TEMP/checksum.log"; then cat "$TEMP/checksum.log"; exit 1; fi
-echo 'Release guards reject invalid version and SHA-256 before packaging or notarization.'
+cat > "$TEMP/png-helper" <<'SH'
+#!/bin/sh
+[ "$#" -eq 2 ] && [ "$1" = --format=png ] && [ "$2" = --version ] || exit 2
+echo 'scanimage (sane-backends) 1.4.0; backend version 1.4.0'
+SH
+cat > "$TEMP/no-png-helper" <<'SH'
+#!/bin/sh
+echo 'PNG support not compiled in' >&2
+exit 1
+SH
+cat > "$TEMP/empty-helper" <<'SH'
+#!/bin/sh
+exit 0
+SH
+chmod +x "$TEMP/png-helper" "$TEMP/no-png-helper" "$TEMP/empty-helper"
+"$ROOT/script/bootstrap_backend.sh" --verify-helper "$TEMP/png-helper" > "$TEMP/png.log" 2>&1
+for HELPER in no-png-helper empty-helper; do
+  if "$ROOT/script/bootstrap_backend.sh" --verify-helper "$TEMP/$HELPER" > "$TEMP/$HELPER.log" 2>&1; then
+    echo "Invalid scanner helper accepted: $HELPER" >&2; exit 1
+  fi
+done
+grep -q 'PNG support not compiled in' "$TEMP/no-png-helper.log"
+grep -q 'did not return its version' "$TEMP/empty-helper.log"
+echo 'Release guards reject invalid version, SHA-256 and missing PNG support before packaging or notarization.'

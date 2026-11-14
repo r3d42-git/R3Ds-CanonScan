@@ -4,9 +4,30 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/script/backend-versions.sh"
 TASK_DEPS="$ROOT_DIR/.dependencies"
 TASK_PREFIX="$TASK_DEPS/scanner-runtime"
+verify_png_helper() {
+  local task_helper="$1" task_output
+  # SANE 1.4.0 parses --format before --version, then exits before device discovery.
+  # --help is unsuitable here: it discovers and opens scanners.
+  if ! task_output="$(LC_ALL=C "$task_helper" --format=png --version 2>&1)"; then
+    printf 'Scanner helper PNG capability check failed: %s\n' "$task_output" >&2
+    return 1
+  fi
+  if [[ "$task_output" != *'scanimage ('* ]]; then
+    printf 'Scanner helper did not return its version: %s\n' "$task_output" >&2
+    return 1
+  fi
+  printf '%s\n' "$task_output"
+}
+# Standalone, hardware-free check for a built or bundled helper; never builds.
+if [[ "${1:-}" == --verify-helper ]]; then
+  [[ $# == 2 ]] || { echo 'Usage: bootstrap_backend.sh --verify-helper /path/to/scanimage' >&2; exit 1; }
+  verify_png_helper "$2"
+  exit 0
+fi
 TASK_FINGERPRINT="$(cat "$ROOT_DIR/script/backend-versions.sh" "$ROOT_DIR/script/bootstrap_backend.sh" | shasum -a 256 | awk '{print $1}')"
 # Never reuse the former Homebrew-linked build, or a build from a different recipe.
 if [[ -x "$TASK_PREFIX/bin/scanimage" && -f "$TASK_PREFIX/build-fingerprint" && "${1:-}" != --rebuild ]] && [[ "$(cat "$TASK_PREFIX/build-fingerprint")" == "$TASK_FINGERPRINT" ]]; then
+  verify_png_helper "$TASK_PREFIX/bin/scanimage"
   exit 0
 fi
 if [[ "$(uname -m)" != arm64 || "$(uname -s)" != Darwin ]]; then
@@ -74,10 +95,16 @@ export BACKENDS=canon_dr PRELOADABLE_BACKENDS=canon_dr
 export USB_CFLAGS="-I$TASK_LIBS/include/libusb-1.0"
 export USB_LIBS="-L$TASK_LIBS/lib -lusb-1.0 -framework IOKit -framework CoreFoundation -framework Security -lobjc"
 export CFLAGS="$CFLAGS -Wno-error=incompatible-function-pointer-types"
-"$TASK_BUILD/sources/sane-backends-$SANE_VERSION/configure" --prefix="$TASK_PREFIX" \
+# SANE's AC_CHECK_LIB(png, png_init_io) needs libpng's zlib dependency when
+# linking our static archive. PNG_CFLAGS/PNG_LIBS are not configure inputs.
+LIBS="-lz" "$TASK_BUILD/sources/sane-backends-$SANE_VERSION/configure" --prefix="$TASK_PREFIX" \
   --disable-shared --enable-static --disable-dynamic --disable-nls \
   --without-avahi --without-snmp --without-libcurl --without-poppler-glib \
   --without-v4l --without-gphoto2 --without-systemd --with-usb > configure-output.log 2>&1
+if ! /usr/bin/grep -Eq '^#define HAVE_LIBPNG 1$' include/sane/config.h; then
+  echo 'SANE configuration omitted PNG support; inspect sane-build/config.log before rebuilding.' >&2
+  exit 1
+fi
 make -C lib -j"$TASK_JOBS" > build-output.log 2>&1
 make -C sanei -j"$TASK_JOBS" >> build-output.log 2>&1
 # Generate the preload table before the targeted library build (not all).
@@ -110,7 +137,7 @@ if ! awk 'NR > 1 { if ($1 !~ /^\/usr\/lib\// && $1 !~ /^\/System\/Library\//) ex
 fi
 [[ "$(lipo -archs "$TASK_BUILD/runtime/bin/scanimage")" == arm64 ]] || { echo 'Release assertion failed (bootstrap_backend.sh:111)' >&2; exit 1; }
 otool -l "$TASK_BUILD/runtime/bin/scanimage" | awk '/LC_BUILD_VERSION/{seen=1} seen && /minos/{if ($2 != "27.0") exit 1; found=1; exit} END{if (!found) exit 1}'
-"$TASK_BUILD/runtime/bin/scanimage" --version
+verify_png_helper "$TASK_BUILD/runtime/bin/scanimage"
 printf '%s\n' "$TASK_FINGERPRINT" > "$TASK_BUILD/runtime/build-fingerprint"
 # Promote only a fully verified build; keep the preceding runtime until then.
 rm -rf "$TASK_PREFIX.previous"

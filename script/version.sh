@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One version source for development bundles and public releases.
-CANONSCAN_VERSION=0.4.0
-CANONSCAN_BUILD=5
+CANONSCAN_VERSION=0.4.1
+CANONSCAN_BUILD=6
 CANONSCAN_APP_NAME='R3Ds CanonScan'
 CANONSCAN_EXECUTABLE=CanonScan
 CANONSCAN_BUNDLE_ID=de.r3d.CanonScan
