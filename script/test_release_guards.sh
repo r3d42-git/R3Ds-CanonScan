@@ -39,4 +39,14 @@ for HELPER in no-png-helper empty-helper; do
 done
 grep -q 'PNG support not compiled in' "$TEMP/no-png-helper.log"
 grep -q 'did not return its version' "$TEMP/empty-helper.log"
-echo 'Release guards reject invalid version, SHA-256 and missing PNG support before packaging or notarization.'
+cat > "$TEMP/button-helper" <<'SH'
+#!/bin/sh
+[ "$#" -eq 1 ] && [ "$1" = --version ] || exit 2
+echo 'scanbutton 1 (SANE start-button watcher)'
+SH
+chmod +x "$TEMP/button-helper"
+"$ROOT/script/bootstrap_backend.sh" --verify-button-helper "$TEMP/button-helper"
+if "$ROOT/script/bootstrap_backend.sh" --verify-button-helper "$TEMP/empty-helper" > "$TEMP/button.log" 2>&1; then
+  echo 'Empty scanbutton helper was accepted.' >&2; exit 1
+fi
+echo 'Release guards reject invalid version, SHA-256, missing PNG support and invalid button helpers before packaging or notarization.'

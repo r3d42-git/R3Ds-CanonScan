@@ -19,7 +19,7 @@ STAGING="$(mktemp -d "$(dirname "$APP")/.canonscan-bundle.XXXXXX")/$CANONSCAN_AP
 trap 'rm -rf "$(dirname "$STAGING")"' EXIT
 mkdir -p "$STAGING/Contents/MacOS" "$STAGING/Contents/Resources/sane.d" "$STAGING/Contents/Resources/Licenses"
 cp "$BIN" "$STAGING/Contents/MacOS/$CANONSCAN_EXECUTABLE"
-cp .dependencies/scanner-runtime/bin/scanimage "$STAGING/Contents/Resources/scanimage"
+cp .dependencies/scanner-runtime/bin/{scanimage,scanbutton} "$STAGING/Contents/Resources/"
 cp .dependencies/scanner-runtime/etc/sane.d/*.conf "$STAGING/Contents/Resources/sane.d/"
 cp .dependencies/scanner-runtime/licenses/* "$STAGING/Contents/Resources/Licenses/"
 cp Resources/AppIcon.icns "$STAGING/Contents/Resources/"
@@ -48,9 +48,11 @@ cat > "$STAGING/Contents/Info.plist" <<PLIST
 PLIST
 if [[ "$IDENTITY" == - ]]; then
   codesign --force --sign - "$STAGING/Contents/Resources/scanimage"
+  codesign --force --sign - "$STAGING/Contents/Resources/scanbutton"
   codesign --force --sign - "$STAGING"
 else
   codesign --force --timestamp --options runtime --sign "$IDENTITY" "$STAGING/Contents/Resources/scanimage"
+  codesign --force --timestamp --options runtime --sign "$IDENTITY" "$STAGING/Contents/Resources/scanbutton"
   codesign --force --timestamp --options runtime --sign "$IDENTITY" "$STAGING"
 fi
 codesign --verify --deep --strict "$STAGING"

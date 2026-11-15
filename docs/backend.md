@@ -1,10 +1,20 @@
 # Scanner backend build and corresponding source
 
 The supported scanner is Canon imageFORMULA P-208II, USB `1083:165f`.
-The statically linked SANE 1.4.0 helper includes only `canon_dr`. Its configuration
+The statically linked SANE 1.4.0 helpers include only `canon_dr`. Their configuration
 must retain `option duplex-offset 260` and `usb 0x1083 0x165f`; the offset was
 validated for this scanner's approximately 5.5 mm sensor displacement. This
 release targets Apple Silicon and macOS 27.0 or later.
+
+`scanimage` acquires pages. The local `Backend/scanbutton.c` helper, `scanbutton`,
+opens the same backend and polls its readable `start` boolean every 200 ms.
+It never starts the feeder. It consumes the opening state, waits for a fresh
+press, closes SANE/USB, then emits `START`. The app joins this process before
+opening `scanimage`. SIGTERM/SIGINT stop the listener and release the device.
+Only the foreground document listens; changing settings, opening dialogs,
+starting other operations or closing the window cancels the listener.
+`./script/test_scanbutton.sh` tests the protocol, startup latch and cleanup
+against a mock SANE implementation without accessing hardware.
 
 ## Rebuild
 
@@ -13,6 +23,7 @@ On an Apple Silicon Mac with macOS 27 and Xcode command line tools installed:
 ```sh
 ./script/bootstrap_backend.sh --rebuild
 .dependencies/scanner-runtime/bin/scanimage --version
+.dependencies/scanner-runtime/bin/scanbutton --version
 ./script/bootstrap_backend.sh --verify-helper .dependencies/scanner-runtime/bin/scanimage
 otool -L .dependencies/scanner-runtime/bin/scanimage
 ```
@@ -38,7 +49,7 @@ Mach-O minimum macOS 27.0 and PNG format acceptance before promoting the helper.
 The same executable PNG check also runs before accepting a cached runtime.
 Build logs, sources and
 static libraries are retained under `.dependencies/backend-build-FINGERPRINT`.
-The manifest and complete build recipe determine the fingerprint, so an older
+The manifest, local `scanbutton.c` source and complete build recipe determine the fingerprint, so an older
 Homebrew build or changed recipe cannot silently reuse an existing helper.
 
 The standalone `--verify-helper PATH` command never builds or scans. It runs
@@ -58,17 +69,17 @@ builds.
 ## Release source asset
 
 ```sh
-./script/package_backend_sources.sh 0.4.1
+./script/package_backend_sources.sh 0.5.0
 ```
 
 This verifies and packages all four upstream archives, a checksum list,
-version/URL manifest, notices, extracted license texts and the build script into
-`dist/release/R3Ds-CanonScan-0.4.1-backend-sources.tar.gz`. It does not package
+version/URL manifest, notices, extracted license texts, local `scanbutton.c` source and the build script into
+`dist/release/R3Ds-CanonScan-0.5.0-backend-sources.tar.gz`. It does not package
 Homebrew binaries or the CMake binary. To rebuild from that asset:
 
 ```sh
-tar -xzf R3Ds-CanonScan-0.4.1-backend-sources.tar.gz
-cd R3Ds-CanonScan-0.4.1-backend-sources
+tar -xzf R3Ds-CanonScan-0.5.0-backend-sources.tar.gz
+cd R3Ds-CanonScan-0.5.0-backend-sources
 ./script/bootstrap_backend.sh --rebuild
 ```
 

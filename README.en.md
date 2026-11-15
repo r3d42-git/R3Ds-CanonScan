@@ -8,6 +8,7 @@ A small native macOS document scanning app for the **Canon imageFORMULA P-208II*
 
 ## Features
 
+- Scan using the scanner's **hardware Start button** while the document window is active. The current scan settings apply, and additional pages are appended. Disable “Scannertaste verwenden” in scan options if needed. “Scannertaste bereit” indicates readiness; listening pauses during other operations and while the app is in the background.
 - Scan single-sided or duplex A4 documents through the automatic feeder. Append additional batches to the same document.
 - Switch between **original, enhanced grayscale and black-and-white after scanning** without feeding the paper again. The selected appearance applies to the current document and PDF export.
 - Lighten paper backgrounds, reduce background column variation and gently sharpen text. Software black-and-white uses adaptive local thresholding of the grayscale acquisition.

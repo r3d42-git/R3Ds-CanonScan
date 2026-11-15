@@ -1,5 +1,23 @@
 import Foundation
 
+protocol HardwareButtonServing: AnyObject {
+    func waitForStart(device: ScannerDevice, onReady: @escaping @Sendable () -> Void) async throws
+    func cancel()
+}
+
+/// Uses a separate process so stopping the listener cannot cancel a scan.
+final class HardwareButtonService: HardwareButtonServing {
+    private let process: ScannerService
+    init(executable: URL? = Bundle.main.url(forResource: "scanbutton", withExtension: nil),
+         configuration: URL? = Bundle.main.resourceURL?.appendingPathComponent("sane.d", isDirectory: true)) {
+        process = ScannerService(executable: executable, configuration: configuration)
+    }
+    func cancel() { process.cancel() }
+    func waitForStart(device: ScannerDevice, onReady: @escaping @Sendable () -> Void) async throws {
+        try await process.waitForStart(device: device, onReady: onReady)
+    }
+}
+
 protocol ScannerServing: AnyObject {
     func discover() async throws -> [ScannerDevice]
     func scan(device: ScannerDevice, settings: ScanSettings, directory: URL,
@@ -32,7 +50,8 @@ final class ScannerService: ScannerServing, @unchecked Sendable {
     private func begin() { lock.lock(); cancelled = false; lock.unlock() }
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
 
-    private func run(arguments: [String], poll: (() throws -> Void)? = nil) throws -> (Int32, String, String) {
+    private func run(arguments: [String], onOutput: ((String) -> Void)? = nil,
+                     poll: (() throws -> Void)? = nil) throws -> (Int32, String, String) {
         guard let executable, FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw ScannerFailure(message: "Die Scannerkomponente fehlt. Bitte verwende die vollständig erstellte R3Ds CanonScan-App.", details: "scanimage resource unavailable")
         }
@@ -64,6 +83,7 @@ final class ScannerService: ScannerServing, @unchecked Sendable {
         }
         while process.isRunning {
             if isCancelled { process.terminate() }
+            if let onOutput { onOutput((try? String(contentsOf: outURL, encoding: .utf8)) ?? "") }
             try poll?()
             Thread.sleep(forTimeInterval: 0.12)
         }
@@ -73,6 +93,25 @@ final class ScannerService: ScannerServing, @unchecked Sendable {
         let stderr = (try? String(contentsOf: errURL, encoding: .utf8)) ?? ""
         if isCancelled { throw CancellationError() }
         return (process.terminationStatus, stdout, String(stderr.suffix(24000)))
+    }
+
+    fileprivate func waitForStart(device: ScannerDevice, onReady: @escaping @Sendable () -> Void) async throws {
+        begin()
+        try await withTaskCancellationHandler {
+            try await Task.detached(priority: .utility) { [self] in
+                var ready = false
+                let (status, output, error) = try run(arguments: ["--device-name", device.id], onOutput: { output in
+                    if !ready && output.split(whereSeparator: \.isNewline).contains("READY") {
+                        ready = true
+                        onReady()
+                    }
+                })
+                guard status == 0 else { throw ScannerFailure.status(status, details: error) }
+                guard output.split(whereSeparator: \.isNewline).contains("START") else {
+                    throw ScannerFailure(message: "Die Scannertaste hat kein Startsignal geliefert.", details: output + error)
+                }
+            }.value
+        } onCancel: { self.cancel() }
     }
 
     func discover() async throws -> [ScannerDevice] {
@@ -101,12 +140,12 @@ final class ScannerService: ScannerServing, @unchecked Sendable {
             try await Task.detached(priority: .userInitiated) { [self] in
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 var seen = Set<String>()
-                let (status, _, error) = try run(arguments: Self.arguments(device: device, settings: settings, directory: directory)) {
+                let (status, _, error) = try run(arguments: Self.arguments(device: device, settings: settings, directory: directory), poll: {
                     let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
                         .filter { $0.pathExtension.lowercased() == "png" && $0.lastPathComponent.hasPrefix("page-") }
                         .sorted { $0.lastPathComponent < $1.lastPathComponent }
                     for file in files where seen.insert(file.lastPathComponent).inserted { onPage(file) }
-                }
+                })
                 guard status == 0 || (status == 7 && !seen.isEmpty) else {
                     throw ScannerFailure.status(status, details: error)
                 }

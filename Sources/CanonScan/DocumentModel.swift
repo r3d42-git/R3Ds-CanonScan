@@ -13,8 +13,15 @@ import Foundation
     @Published var showNewConfirmation = false
     @Published var showCloseConfirmation = false
     @Published var diagnostics = ""
+    @Published private(set) var hardwareButtonReady = false
+    @Published private(set) var hardwareButtonMessage: String?
+    @Published var isKeyWindow = false
     private var revision = UUID()
     private let service: ScannerServing
+    private let buttonService: HardwareButtonServing
+    private var buttonOperation: Task<Void, Never>?
+    private var buttonGeneration = UUID()
+    private static weak var buttonOwner: DocumentModel?
     private var operation: Task<Void, Never>?
     private var deleted: [(ScanPage, Int)] = []
     private var activeScan: UUID?
@@ -27,8 +34,10 @@ import Foundation
     var selectedIndex: Int? { pages.firstIndex { $0.id == selectedID } }
     var pageCountLabel: String { pages.count == 1 ? "1 Seite" : "\(pages.count) Seiten" }
 
-    init(service: ScannerServing = ScannerService(), session: URL? = nil, demoArguments: [String] = ProcessInfo.processInfo.arguments) {
+    init(service: ScannerServing = ScannerService(), buttonService: HardwareButtonServing = HardwareButtonService(),
+         session: URL? = nil, demoArguments: [String] = ProcessInfo.processInfo.arguments) {
         self.service = service
+        self.buttonService = buttonService
         let fixture = demoArguments.contains { ["--demo", "--worst-case", "--empty", "--one", "--fixture-directory"].contains($0) }
         self.session = session ?? (fixture ? FileManager.default.temporaryDirectory.appendingPathComponent("CanonScan-Preview-\(UUID().uuidString)", isDirectory: true) : Self.recoverableSession() ?? Self.newSessionURL())
         Self.claimedSessions.insert(self.session)
@@ -47,6 +56,58 @@ import Foundation
             makeDemo(worst: demoArguments.contains("--worst-case"), one: demoArguments.contains("--one"))
         }
         #endif
+    }
+
+    /// Only the key document listens. Every scanner operation joins the listener
+    /// before opening USB, including a manual scan racing a button press.
+    func updateHardwareButtonMonitoring(allowed: Bool, settings: ScanSettings) {
+        let previous = stopHardwareButtonMonitoring()
+        guard allowed, !busy, let device = devices.first(where: { $0.id == deviceID }) else { return }
+        let other = Self.buttonOwner === self ? nil : Self.buttonOwner?.stopHardwareButtonMonitoring()
+        Self.buttonOwner = self
+        let generation = buttonGeneration
+        hardwareButtonMessage = nil
+        buttonOperation = Task { [weak self, buttonService] in
+            await previous?.value
+            await other?.value
+            guard !Task.isCancelled else { return }
+            do {
+                try await buttonService.waitForStart(device: device) { [weak self] in
+                    Task { @MainActor in
+                        guard let self, self.buttonGeneration == generation else { return }
+                        self.hardwareButtonReady = true
+                    }
+                }
+                guard let self, !Task.isCancelled, self.buttonGeneration == generation,
+                      !self.busy, self.deviceID == device.id else { return }
+                self.buttonOperation = nil
+                self.hardwareButtonReady = false
+                self.scan(settings: settings)
+            } catch is CancellationError { }
+            catch {
+                guard let self, !Task.isCancelled, self.buttonGeneration == generation else { return }
+                self.buttonGeneration = UUID()
+                self.hardwareButtonReady = false
+                self.hardwareButtonMessage = "Scannertaste nicht verfügbar. Scannen per App ist weiterhin möglich."
+                self.diagnostics = (error as? ScannerFailure)?.details ?? String(describing: error)
+            }
+        }
+    }
+
+    @discardableResult func stopHardwareButtonMonitoring() -> Task<Void, Never>? {
+        buttonGeneration = UUID()
+        hardwareButtonReady = false
+        let previous = buttonOperation
+        previous?.cancel()
+        buttonService.cancel()
+        // Keep the task until the next listener or scanner operation has joined it.
+        return previous
+    }
+
+    private func pauseButtonListeners() -> Task<Void, Never> {
+        let own = stopHardwareButtonMonitoring()
+        let other = Self.buttonOwner === self ? nil : Self.buttonOwner?.stopHardwareButtonMonitoring()
+        return Task { await own?.value; await other?.value }
     }
 
     private static func newSessionURL() -> URL {
@@ -147,13 +208,15 @@ import Foundation
             pendingClose = close; showCloseConfirmation = true
         } else { close() }
     }
-    func confirmClose() { cancel(); pendingClose?(); pendingClose = nil }
+    func confirmClose() { stopHardwareButtonMonitoring(); cancel(); pendingClose?(); pendingClose = nil }
 
     func discover() {
         guard !busy else { return }
+        let listener = pauseButtonListeners()
         busy = true; status = "Scanner wird gesucht …"
         operation = Task { [weak self] in
             guard let self else { return }
+            await listener.value
             defer { self.busy = false; self.operation = nil }
             do {
                 self.devices = try await self.service.discover()
@@ -169,6 +232,7 @@ import Foundation
             alert = UserAlert(title: "Kein Scanner ausgewählt", message: "Verbinde den Scanner per USB, stelle Auto Start vor dem Anschließen auf OFF und klicke auf „Scanner suchen“.")
             return
         }
+        let listener = pauseButtonListeners()
         busy = true; status = "Seiten werden eingelesen …"
         let appearance: PageAppearance = pages.isEmpty ? (settings.mode == .lineart ? .blackAndWhite : .gray) : documentAppearance
         let scanID = UUID()
@@ -176,6 +240,7 @@ import Foundation
         let directory = session.appendingPathComponent("batch-\(scanID)", isDirectory: true)
         operation = Task { [weak self] in
             guard let self else { return }
+            await listener.value
             defer { self.importCompletedPages(in: directory, dpi: settings.resolution, appearance: appearance); self.activeScan = nil; self.busy = false; self.operation = nil }
             do {
                 let count = try await self.service.scan(device: device, settings: settings, directory: directory) { [weak self] _ in

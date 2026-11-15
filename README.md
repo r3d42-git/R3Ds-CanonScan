@@ -8,6 +8,7 @@ Eine kleine native macOS-App für den **Canon imageFORMULA P-208II**: Dokumente 
 
 ## Funktionen
 
+- Mit der **Starttaste am Scanner** scannen: Bei aktivem Dokumentfenster werden die gewählten Scanoptionen verwendet und weitere Seiten angehängt. Unter „Scanoptionen“ lässt sich „Scannertaste verwenden“ abschalten. „Scannertaste bereit“ zeigt die Bereitschaft an; während anderer Vorgänge und bei inaktiver App pausiert die Taste.
 - Mehrseitige A4-Dokumente über den automatischen Einzug scannen, einseitig oder beidseitig. Weitere Stapel an dasselbe Dokument anhängen.
 - Nach dem Scan zwischen **Original, optimierten Graustufen und Schwarzweiß** wechseln, ohne erneut einzuziehen. Die Auswahl gilt für das aktuelle Dokument und dessen PDF-Export.
 - Papierhintergrund aufhellen, streifige Hintergrundschwankungen reduzieren und Schrift behutsam nachschärfen. Schwarzweiß entsteht durch lokale adaptive Schwellwertberechnung aus dem Graustufenscan.

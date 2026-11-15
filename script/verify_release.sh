@@ -28,7 +28,7 @@ PLIST="$APP/Contents/Info.plist"
 [[ "$(plutil -extract CFBundleVersion raw -o - "$PLIST")" == "$CANONSCAN_BUILD" ]] || { echo 'Release assertion failed (verify_release.sh:28)' >&2; exit 1; }
 [[ "$(plutil -extract LSMinimumSystemVersion raw -o - "$PLIST")" == "$CANONSCAN_MIN_MACOS" ]] || { echo 'Release assertion failed (verify_release.sh:29)' >&2; exit 1; }
 REQUIREMENT="=anchor apple generic and certificate leaf[subject.OU] = \"$CANONSCAN_TEAM_ID\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
-for BINARY in "$APP/Contents/MacOS/$CANONSCAN_EXECUTABLE" "$APP/Contents/Resources/scanimage"; do
+for BINARY in "$APP/Contents/MacOS/$CANONSCAN_EXECUTABLE" "$APP/Contents/Resources/scanimage" "$APP/Contents/Resources/scanbutton"; do
   [[ "$(lipo -archs "$BINARY")" == arm64 ]] || { echo 'Release assertion failed (verify_release.sh:32)' >&2; exit 1; }
   codesign --verify --strict -R "$REQUIREMENT" "$BINARY"
   SIGNATURE="$(codesign -dv --verbose=4 "$BINARY" 2>&1)"
@@ -47,10 +47,11 @@ spctl --assess --type execute --verbose=4 "$APP"
 [[ -s "$APP/Contents/Resources/AppIcon.icns" ]] || { echo 'Release assertion failed (verify_release.sh:47)' >&2; exit 1; }
 [[ -s "$APP/Contents/Resources/Licenses/CanonScan-GPL-3.0.txt" ]] || { echo 'Release assertion failed (verify_release.sh:48)' >&2; exit 1; }
 "$APP/Contents/Resources/scanimage" --format=png --version
+[[ "$("$APP/Contents/Resources/scanbutton" --version)" == 'scanbutton 1 (SANE start-button watcher)' ]] || { echo 'Invalid scanbutton helper.' >&2; exit 1; }
 tar -xzf "$SOURCE" -C "$VERIFY"
 SOURCES="$VERIFY/R3Ds-CanonScan-$VERSION-backend-sources"
 (cd "$SOURCES" && shasum -a 256 -c SHA256SUMS)
-FINGERPRINT="$(cat "$SOURCES/script/backend-versions.sh" "$SOURCES/script/bootstrap_backend.sh" | shasum -a 256 | awk '{print $1}')"
+FINGERPRINT="$(cat "$SOURCES/script/backend-versions.sh" "$SOURCES/script/bootstrap_backend.sh" "$SOURCES/Backend/scanbutton.c" | shasum -a 256 | awk '{print $1}')"
 [[ "$(cat "$APP/Contents/Resources/backend-fingerprint.txt")" == "$FINGERPRINT" ]] || { echo 'Release assertion failed (verify_release.sh:54)' >&2; exit 1; }
 [[ "$(cat "$SOURCES/build-fingerprint")" == "$FINGERPRINT" ]] || { echo 'Release assertion failed (verify_release.sh:55)' >&2; exit 1; }
 python3 - "$SOURCES" <<'PY'

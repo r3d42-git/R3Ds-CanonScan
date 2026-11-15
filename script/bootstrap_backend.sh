@@ -18,16 +18,29 @@ verify_png_helper() {
   fi
   printf '%s\n' "$task_output"
 }
+verify_button_helper() {
+  local task_output
+  task_output="$("$1" --version)" || return 1
+  [[ "$task_output" == 'scanbutton 1 (SANE start-button watcher)' ]] || {
+    echo 'Invalid scanbutton helper version.' >&2; return 1;
+  }
+}
+if [[ "${1:-}" == --verify-button-helper ]]; then
+  [[ $# == 2 ]] || { echo 'Usage: bootstrap_backend.sh --verify-button-helper PATH' >&2; exit 1; }
+  verify_button_helper "$2"
+  exit 0
+fi
 # Standalone, hardware-free check for a built or bundled helper; never builds.
 if [[ "${1:-}" == --verify-helper ]]; then
   [[ $# == 2 ]] || { echo 'Usage: bootstrap_backend.sh --verify-helper /path/to/scanimage' >&2; exit 1; }
   verify_png_helper "$2"
   exit 0
 fi
-TASK_FINGERPRINT="$(cat "$ROOT_DIR/script/backend-versions.sh" "$ROOT_DIR/script/bootstrap_backend.sh" | shasum -a 256 | awk '{print $1}')"
+TASK_FINGERPRINT="$(cat "$ROOT_DIR/script/backend-versions.sh" "$ROOT_DIR/script/bootstrap_backend.sh" "$ROOT_DIR/Backend/scanbutton.c" | shasum -a 256 | awk '{print $1}')"
 # Never reuse the former Homebrew-linked build, or a build from a different recipe.
-if [[ -x "$TASK_PREFIX/bin/scanimage" && -f "$TASK_PREFIX/build-fingerprint" && "${1:-}" != --rebuild ]] && [[ "$(cat "$TASK_PREFIX/build-fingerprint")" == "$TASK_FINGERPRINT" ]]; then
+if [[ -x "$TASK_PREFIX/bin/scanimage" && -x "$TASK_PREFIX/bin/scanbutton" && -f "$TASK_PREFIX/build-fingerprint" && "${1:-}" != --rebuild ]] && [[ "$(cat "$TASK_PREFIX/build-fingerprint")" == "$TASK_FINGERPRINT" ]]; then
   verify_png_helper "$TASK_PREFIX/bin/scanimage"
+  verify_button_helper "$TASK_PREFIX/bin/scanbutton"
   exit 0
 fi
 if [[ "$(uname -m)" != arm64 || "$(uname -s)" != Darwin ]]; then
@@ -117,6 +130,12 @@ mkdir -p "$TASK_BUILD/runtime/bin" "$TASK_BUILD/runtime/etc/sane.d" "$TASK_BUILD
   backend/.libs/libsane.a sanei/.libs/libsanei.a lib/.libs/liblib.a \
   "$TASK_LIBS/lib/libusb-1.0.a" "$TASK_LIBS/lib/libpng.a" "$TASK_LIBS/lib/libjpeg.a" \
   -lz -lm -lpthread -lobjc -framework Security -framework IOKit -framework CoreFoundation
+"$CC" -arch arm64 -mmacosx-version-min="$BACKEND_DEPLOYMENT_TARGET" -O2 -Wall -Wextra -Werror \
+  -I"$TASK_BUILD/sources/sane-backends-$SANE_VERSION/include" -Iinclude \
+  -o "$TASK_BUILD/runtime/bin/scanbutton" "$ROOT_DIR/Backend/scanbutton.c" \
+  backend/.libs/libsane.a sanei/.libs/libsanei.a lib/.libs/liblib.a \
+  "$TASK_LIBS/lib/libusb-1.0.a" "$TASK_LIBS/lib/libpng.a" "$TASK_LIBS/lib/libjpeg.a" \
+  -lz -lm -lpthread -lobjc -framework Security -framework IOKit -framework CoreFoundation
 # Validated P-208II sensor offset: 260 units at 1200 dpi (5.5 mm).
 printf 'option duplex-offset 260\nusb 0x1083 0x165f\n' > "$TASK_BUILD/runtime/etc/sane.d/canon_dr.conf"
 printf 'canon_dr\n' > "$TASK_BUILD/runtime/etc/sane.d/dll.conf"
@@ -131,12 +150,15 @@ cp "$TASK_BUILD/sources/libjpeg-turbo-$JPEG_VERSION/README.ijg" "$TASK_BUILD/run
 cp "$TASK_BUILD/sources/libjpeg-turbo-$JPEG_VERSION/simd/arm/jccolor-neon.c" "$TASK_BUILD/runtime/licenses/jpeg-turbo-SIMD-notice.c"
 cp "$ROOT_DIR/script/backend-versions.sh" "$TASK_BUILD/runtime/backend-versions.sh"
 cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$TASK_BUILD/runtime/licenses/THIRD_PARTY_NOTICES.md"
-otool -L "$TASK_BUILD/runtime/bin/scanimage" > "$TASK_BUILD/runtime/linkage.txt"
+for task_binary in scanimage scanbutton; do
+otool -L "$TASK_BUILD/runtime/bin/${task_binary}" > "$TASK_BUILD/runtime/linkage.txt"
 if ! awk 'NR > 1 { if ($1 !~ /^\/usr\/lib\// && $1 !~ /^\/System\/Library\//) exit 1 }' "$TASK_BUILD/runtime/linkage.txt"; then
   echo 'Scanner binary has a non-system runtime dependency.' >&2; exit 1
 fi
-[[ "$(lipo -archs "$TASK_BUILD/runtime/bin/scanimage")" == arm64 ]] || { echo 'Release assertion failed (bootstrap_backend.sh:111)' >&2; exit 1; }
-otool -l "$TASK_BUILD/runtime/bin/scanimage" | awk '/LC_BUILD_VERSION/{seen=1} seen && /minos/{if ($2 != "27.0") exit 1; found=1; exit} END{if (!found) exit 1}'
+[[ "$(lipo -archs "$TASK_BUILD/runtime/bin/${task_binary}")" == arm64 ]] || { echo 'Release assertion failed (bootstrap_backend.sh:111)' >&2; exit 1; }
+otool -l "$TASK_BUILD/runtime/bin/${task_binary}" | awk '/LC_BUILD_VERSION/{seen=1} seen && /minos/{if ($2 != "27.0") exit 1; found=1; exit} END{if (!found) exit 1}'
+done
+verify_button_helper "$TASK_BUILD/runtime/bin/scanbutton"
 verify_png_helper "$TASK_BUILD/runtime/bin/scanimage"
 printf '%s\n' "$TASK_FINGERPRINT" > "$TASK_BUILD/runtime/build-fingerprint"
 # Promote only a fully verified build; keep the preceding runtime until then.

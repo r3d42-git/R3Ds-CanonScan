@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct DocumentView: View {
+    @State private var applicationActive = NSApp.isActive
     @ObservedObject var settings: SettingsStore
     @StateObject private var model = DocumentModel()
     @StateObject private var previewZoom = PreviewZoomState()
@@ -72,6 +73,16 @@ struct DocumentView: View {
         .focusedSceneObject(previewZoom)
         .toolbar { toolbar }
         .background(WindowCloseGuard(model: model))
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            applicationActive = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            applicationActive = false
+        }
+        .onChange(of: hardwareButtonContext, initial: true) { _, context in
+            model.updateHardwareButtonMonitoring(allowed: context.allowed, settings: context.settings)
+        }
+        .onDisappear { model.stopHardwareButtonMonitoring() }
         .task {
             #if DEBUG
             let fixtures = ["--demo", "--worst-case", "--empty", "--one", "--fixture-directory"]
@@ -141,6 +152,10 @@ struct DocumentView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Scanoptionen").font(.headline)
                         ScanSettingsView(store: settings)
+                        if let message = model.hardwareButtonMessage {
+                            Text(message).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         Divider()
                         if model.devices.count > 1 {
                             Picker("Scanner", selection: $model.deviceID) {
@@ -156,6 +171,27 @@ struct DocumentView: View {
                 }
                 .disabled(model.busy)
         }
+    }
+
+    private struct HardwareButtonContext: Equatable {
+        let allowed: Bool
+        let deviceID: String?
+        let settings: ScanSettings
+    }
+
+    private var hardwareButtonContext: HardwareButtonContext {
+        #if DEBUG
+        let fixtures = ["--demo", "--worst-case", "--empty", "--one", "--fixture-directory"]
+        let preview = ProcessInfo.processInfo.arguments.contains(where: { fixtures.contains($0) })
+        #else
+        let preview = false
+        #endif
+        return HardwareButtonContext(
+            allowed: !preview && settings.hardwareButtonEnabled && !model.busy &&
+                model.isKeyWindow && applicationActive &&
+                model.alert == nil && !model.showNewConfirmation && !model.showCloseConfirmation &&
+                !showOptions && !showDiagnostics,
+            deviceID: model.deviceID, settings: settings.options)
     }
 
     private var appearanceControls: some View {
@@ -189,7 +225,7 @@ struct DocumentView: View {
     private var statusBar: some View {
         HStack(spacing: 10) {
             if model.busy { ProgressView().controlSize(.small) }
-            Text(model.status).font(.callout).foregroundStyle(.secondary)
+            Text(model.hardwareButtonReady ? "\(model.status) · Scannertaste bereit" : model.status).font(.callout).foregroundStyle(.secondary)
                 .lineLimit(2).help(model.status).frame(maxWidth: .infinity, alignment: .leading)
             if model.busy { Button("Abbrechen") { model.cancel() } }
             if settings.options.recognizeText {
@@ -232,6 +268,11 @@ struct ScanSettingsView: View {
             Text("Das Original wird in Graustufen erfasst. Die Ausgabe lässt sich nach dem Scan ändern.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Beidseitig scannen", isOn: $store.options.duplex)
+            Toggle(isOn: $store.hardwareButtonEnabled) {
+                Text("Scannertaste verwenden").fixedSize(horizontal: false, vertical: true)
+            }
+            Text("Die Starttaste am Scanner liest weitere Seiten ins aktive Dokument ein, solange die App im Vordergrund ist.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Text erkennen", isOn: $store.options.recognizeText)
             Text("Durchsuchbare PDF mit deutscher und englischer Texterkennung. Die Verarbeitung bleibt auf diesem Mac.")
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -288,6 +329,7 @@ struct WindowCloseGuard: NSViewRepresentable {
             guard let coordinator else { return }
             coordinator.window = window
             window.delegate = coordinator
+            Task { @MainActor in coordinator.model.isKeyWindow = window.isKeyWindow }
         }
         return view
     }
@@ -301,6 +343,12 @@ struct WindowCloseGuard: NSViewRepresentable {
         weak var window: NSWindow?
         var allowed = false
         init(model: DocumentModel) { self.model = model }
+        func windowDidBecomeKey(_ notification: Notification) { model.isKeyWindow = true }
+        func windowDidResignKey(_ notification: Notification) { model.isKeyWindow = false }
+        func windowWillClose(_ notification: Notification) {
+            model.isKeyWindow = false
+            model.stopHardwareButtonMonitoring()
+        }
         func windowShouldClose(_ sender: NSWindow) -> Bool {
             if allowed || (!model.busy && (!model.dirty || model.pages.isEmpty)) { return true }
             model.requestClose { [weak self] in

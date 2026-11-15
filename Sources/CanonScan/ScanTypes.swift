@@ -30,6 +30,9 @@ enum PageAppearance: String, Codable, CaseIterable, Identifiable, Sendable {
 }
 
 @MainActor final class SettingsStore: ObservableObject {
+    @Published var hardwareButtonEnabled: Bool {
+        didSet { UserDefaults.standard.set(hardwareButtonEnabled, forKey: "hardwareButtonEnabled") }
+    }
     @Published var options: ScanSettings {
         didSet {
             if let data = try? JSONEncoder().encode(options) {
@@ -38,6 +41,7 @@ enum PageAppearance: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
     init() {
+        hardwareButtonEnabled = UserDefaults.standard.object(forKey: "hardwareButtonEnabled") as? Bool ?? true
         if let data = UserDefaults.standard.data(forKey: "scanOptions"),
            let value = try? JSONDecoder().decode(ScanSettings.self, from: data),
            ScanSettings.resolutions.contains(value.resolution) {

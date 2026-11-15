@@ -22,6 +22,7 @@ mkdir -p "$OUT"
 git rev-parse HEAD > "$OUT/source-commit.txt"
 APP="$OUT/$CANONSCAN_APP_NAME.app"
 CODE_SIGN_IDENTITY="$IDENTITY" ./script/build_app.sh release "$APP"
+./script/test_scanbutton.sh
 codesign --verify --deep --strict -R "=anchor apple generic and certificate leaf[subject.OU] = \"$CANONSCAN_TEAM_ID\" and certificate leaf[field.1.2.840.113635.100.6.1.13] exists" "$APP"
 ./script/package_backend_sources.sh "$VERSION"
 SOURCE="R3Ds-CanonScan-$VERSION-backend-sources.tar.gz"
